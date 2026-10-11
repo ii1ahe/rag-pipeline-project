@@ -1,8 +1,11 @@
+"""Loads documents, builds the vector store, retrieves three chunks per question, and runs two
+example questions.
+"""
+
 import os
 from typing import List
 from dotenv import load_dotenv
 
-# LangChain Imports
 from langchain_community.document_loaders import PyPDFLoader, TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
@@ -11,12 +14,8 @@ from langchain_community.vectorstores import Chroma
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 
-# Load environment variables from your local .env file
 load_dotenv()
 
-# ==========================================
-# CHECKPOINT 1: Document ingestion + chunking
-# ==========================================
 def load_and_chunk_documents(file_paths: List[str]) -> List[Document]:
     raw_documents = []
     
@@ -41,16 +40,9 @@ def load_and_chunk_documents(file_paths: List[str]) -> List[Document]:
 
     return chunks
 
-# ==========================================
-# CHECKPOINT 2: Embedding generation
-# ==========================================
 def get_embedding_model():
-    # Make sure OPENAI_API_KEY is in your .env file
     return OpenAIEmbeddings(model="text-embedding-3-small")
 
-# ==========================================
-# CHECKPOINT 3: Vector storage + similarity search
-# ==========================================
 def build_vector_store(chunks: List[Document], persist_directory: str = "./chroma_db"):
     embeddings = get_embedding_model()
     vector_db = Chroma.from_documents(
@@ -60,9 +52,6 @@ def build_vector_store(chunks: List[Document], persist_directory: str = "./chrom
     )
     return vector_db
 
-# ==========================================
-# CHECKPOINT 4: Retrieval + prompt setup
-# ==========================================
 RAG_PROMPT_TEMPLATE = """\
 You are an assistant for question-answering tasks. 
 Use ONLY the provided retrieved context to answer the question. 
@@ -83,9 +72,6 @@ def format_context_with_metadata(docs: List[Document]) -> str:
         formatted.append(f"[Source: {source_name} | Chunk: {chunk_id}]\n{d.page_content}")
     return "\n\n---\n\n".join(formatted)
 
-# ==========================================
-# CHECKPOINT 5: Response generation with source reference
-# ==========================================
 def generate_rag_response(vector_db: Chroma, query: str):
     retriever = vector_db.as_retriever(search_kwargs={"k": 3})
     retrieved_docs = retriever.invoke(query)
@@ -113,28 +99,20 @@ def generate_rag_response(vector_db: Chroma, query: str):
         "sources_used": list(set(sources))
     }
 
-# ==========================================
-# CHECKPOINT 6 & EXECUTION: Running the pipeline
-# ==========================================
 if __name__ == "__main__":
-    # 1. Provide a sample document path (make sure you create this file/folder)
     sample_doc_path = ["sample_docs/test_document.txt"]
     
-    # 2. Run Ingestion & Chunking
     print("Chunking documents...")
     chunks = load_and_chunk_documents(sample_doc_path)
     
-    # 3. Build Vector DB
     print("Building Vector Database...")
     vector_db = build_vector_store(chunks)
     
-    # 4. Test Normal Query
     print("\n--- TEST 1: IN-DOCUMENT QUERY ---")
     valid_query = "What is the secret deployment authorization code required to switch the DNS records?"
     result = generate_rag_response(vector_db, valid_query)
     print(f"Q: {result['query']}\nA: {result['response']}\nSources: {result['sources_used']}")
     
-    # 5. Test Hallucination Guardrail (Checkpoint 6 Requirement)
     print("\n--- TEST 2: NOT IN DOCS (Hallucination Check) ---")
     out_of_scope_query = "What is the capital of Mars?"
     guardrail_result = generate_rag_response(vector_db, out_of_scope_query)
